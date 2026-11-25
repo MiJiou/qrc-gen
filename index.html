@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QR Code 橫幅產生器</title>
+<script src="lib/qrcode.js"></script>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #181b22; --line: #2a2f3a; --text: #e8eaf0; --muted: #8a92a6;
+    --accent: #ff3b3b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+  }
+  header { padding: 18px 28px; border-bottom: 1px solid var(--line); display: flex; align-items: baseline; gap: 14px; }
+  header h1 { margin: 0; font-size: 20px; letter-spacing: 1px; }
+  header span { color: var(--muted); font-size: 13px; }
+  main { display: grid; grid-template-columns: 400px 1fr; min-height: calc(100vh - 62px); }
+  aside { border-right: 1px solid var(--line); padding: 20px; overflow-y: auto; max-height: calc(100vh - 62px); }
+  section.preview { padding: 28px; display: flex; flex-direction: column; gap: 20px; min-width: 0; position: sticky; top: 0; align-self: start; }
+
+  .group { margin-bottom: 22px; }
+  .group h3 { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 2px; margin: 0 0 10px; text-transform: uppercase; }
+  label.f { display: block; font-size: 13px; margin: 12px 0 5px; color: #c6cbd8; }
+  .hint { font-size: 11px; color: var(--muted); font-weight: normal; margin-left: 6px; }
+  input[type=text], textarea, select {
+    width: 100%; background: #0f1218; border: 1px solid var(--line); color: var(--text);
+    border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 14px; outline: none;
+  }
+  textarea { resize: vertical; min-height: 54px; }
+  input[type=text]:focus, textarea:focus, select:focus { border-color: var(--accent); }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .row > * { flex: 1; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .range-val { flex: 0 0 38px; text-align: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .colors { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 12px; }
+  .colors label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #c6cbd8; }
+  input[type=color] { width: 30px; height: 26px; border: 1px solid var(--line); border-radius: 6px; padding: 0; background: none; cursor: pointer; }
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: #0f1218; border: 1px solid var(--line); border-radius: 8px; padding: 3px; gap: 3px; }
+  .seg.g4 { grid-auto-flow: row; grid-template-columns: repeat(4, 1fr); }
+  .seg button { background: none; border: 0; color: var(--muted); padding: 6px 4px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 13px; white-space: nowrap; }
+  .seg button:hover { color: var(--text); }
+  .seg button.on { background: #2a2f3a; color: var(--text); }
+  .seg button svg { display: block; margin: 0 auto 2px; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 10px; cursor: pointer; }
+  .fxgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+  .fxgrid .check { margin-top: 8px; }
+  .switch { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 700; cursor: pointer; user-select: none; }
+  .switch input { display: none; }
+  .switch .knob { width: 42px; height: 24px; border-radius: 12px; background: #2a2f3a; position: relative; transition: background .2s; flex: 0 0 auto; }
+  .switch .knob::after { content: ''; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .2s; }
+  .switch input:checked + .knob { background: var(--accent); }
+  .switch input:checked + .knob::after { transform: translateX(18px); }
+  #animBox { transition: opacity .2s; }
+  #animBox.off { opacity: .4; pointer-events: none; }
+  .anim-only { display: none; }
+  body.anim .anim-only { display: inline-block; }
+  body.overlay { background: transparent; min-height: 0; overflow: hidden; }
+  html:has(body.overlay) { overflow: hidden; background: transparent; }
+  body.overlay header, body.overlay aside, body.overlay .toolbar, body.overlay .toast { display: none !important; }
+  body.overlay main { display: block; min-height: 0; }
+  body.overlay section.preview { padding: 0; position: static; }
+  body.overlay .stage { border: 0; padding: 0; background: none !important; min-height: 0; display: block; }
+  body.overlay #out { max-width: none; display: block; }
+
+  .templates { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .tpl { border: 2px solid var(--line); border-radius: 10px; padding: 6px; cursor: pointer; background: #0f1218; transition: border-color .15s, transform .15s; }
+  .tpl:hover { transform: translateY(-1px); border-color: #444b5a; }
+  .tpl.on { border-color: var(--accent); }
+  .tpl .th { height: 54px; display: flex; align-items: center; justify-content: center; }
+  .tpl canvas { max-width: 100%; max-height: 54px; display: block; }
+  .tpl div.n { font-size: 12px; text-align: center; margin-top: 4px; color: #c6cbd8; }
+
+  .stage {
+    border: 1px solid var(--line); border-radius: 14px; padding: 40px; display: flex; align-items: center; justify-content: center;
+    min-height: 360px; overflow: auto;
+  }
+  .stage.checker {
+    background-color: #2a2d35;
+    background-image: linear-gradient(45deg, #343843 25%, transparent 25%), linear-gradient(-45deg, #343843 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #343843 75%), linear-gradient(-45deg, transparent 75%, #343843 75%);
+    background-size: 24px 24px; background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+  }
+  .stage.green { background: #00b140; }
+  .stage.dark { background: #111; }
+  .stage.light { background: #f1f1f1; }
+  .stage.photo { background: linear-gradient(135deg, #5b7a99, #b08f6e 50%, #3e5a45); }
+  #out { max-width: 100%; height: auto; }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .btn {
+    background: var(--accent); color: #fff; border: 0; border-radius: 9px; padding: 11px 20px; font: inherit; font-size: 15px;
+    font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(255,59,59,.3);
+  }
+  .btn.ghost { background: #232733; box-shadow: none; font-weight: 500; }
+  .btn:hover { filter: brightness(1.08); }
+  .spacer { flex: 1; }
+  .meta { font-size: 12px; color: var(--muted); }
+  .bgpick { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+  .bgpick button { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line); cursor: pointer; }
+  .bgpick button.on { border-color: #fff; }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: #232733; padding: 10px 18px; border-radius: 10px; transition: transform .25s; font-size: 14px; }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .err { color: #ff8080; font-size: 12px; margin-top: 6px; min-height: 1em; }
+
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    aside { max-height: none; border-right: 0; border-bottom: 1px solid var(--line); }
+    section.preview { position: static; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>QR Code 橫幅產生器</h1>
+  <span>直播 / 活動預告字卡 · 匯出透明背景 PNG</span>
+</header>
+<main>
+  <aside>
+    <div class="group">
+      <h3>模板</h3>
+      <div class="templates" id="templates"></div>
+    </div>
+
+    <div class="group">
+      <h3>內容</h3>
+      <label class="f">QR Code 內容（網址或文字）</label>
+      <textarea id="qrText">https://www.youtube.com/</textarea>
+      <div class="err" id="qrErr"></div>
+      <label class="f">主標題<span class="hint">按 Enter 可換行</span></label>
+      <textarea id="title" rows="2">稍後18:15 徒步掃街</textarea>
+      <label class="f">副標題<span class="hint">留空＝不顯示</span></label>
+      <input type="text" id="subtitle" value="" placeholder="例：YouTube / Twitch 同步直播">
+      <label class="check"><input type="checkbox" id="hlTime" checked> 時間自動用強調色（例 18:15、20:00~22:00）</label>
+      <div class="row">
+        <div>
+          <label class="f">標籤</label>
+          <input type="text" id="badge" value="LIVE" placeholder="留空＝不顯示">
+        </div>
+        <div>
+          <label class="f">QR 上方小字</label>
+          <input type="text" id="qrLabel" value="掃街直播" placeholder="留空＝不顯示">
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>版面</h3>
+      <label class="f">QR 位置</label>
+      <div class="seg g4" id="qrPos">
+        <button data-v="right">右邊</button>
+        <button data-v="left">左邊</button>
+        <button data-v="top">上方</button>
+        <button data-v="bottom">下方</button>
+        <button data-v="inRight">內嵌右</button>
+        <button data-v="inLeft">內嵌左</button>
+        <button data-v="stack">直式卡</button>
+        <button data-v="none">不顯示</button>
+      </div>
+      <label class="f">文字對齊<span class="hint">多行文字、QR 上下方時的位置</span></label>
+      <div class="seg" id="align">
+        <button data-v="left">靠左</button>
+        <button data-v="center">置中</button>
+        <button data-v="right">靠右</button>
+      </div>
+      <label class="f">外框形狀</label>
+      <div class="seg g4" id="shape">
+        <button data-v="pill">膠囊</button>
+        <button data-v="round">圓角</button>
+        <button data-v="square">方形</button>
+        <button data-v="slant">斜角</button>
+        <button data-v="ribbon">緞帶</button>
+        <button data-v="arrow">箭頭</button>
+        <button data-v="ticket">票券</button>
+        <button data-v="bubble">對話框</button>
+      </div>
+      <label class="f">標籤位置</label>
+      <div class="seg" id="badgeStyle">
+        <button data-v="inside">框內左側</button>
+        <button data-v="top">頂部貼標</button>
+        <button data-v="circle">大圓章</button>
+      </div>
+      <label class="f">QR 點樣式</label>
+      <div class="seg" id="dotStyle">
+        <button data-v="square">方塊</button>
+        <button data-v="rounded">圓角</button>
+        <button data-v="dot">圓點</button>
+      </div>
+      <label class="check"><input type="checkbox" id="italic"> 文字斜體（動感）</label>
+      <label class="f">文字大小</label>
+      <div class="row"><input type="range" id="fontSize" min="28" max="96" value="54"><span class="range-val" id="fontSizeV"></span></div>
+      <label class="f">QR 大小</label>
+      <div class="row"><input type="range" id="qrSize" min="90" max="280" value="150"><span class="range-val" id="qrSizeV"></span></div>
+      <label class="f">外框粗細</label>
+      <div class="row"><input type="range" id="border" min="0" max="18" value="8"><span class="range-val" id="borderV"></span></div>
+      <label class="f">容錯等級</label>
+      <select id="ecl">
+        <option value="L">L（7%，點最少）</option>
+        <option value="M" selected>M（15%，建議）</option>
+        <option value="Q">Q（25%）</option>
+        <option value="H">H（30%）</option>
+      </select>
+    </div>
+
+    <div class="group">
+      <h3>動畫</h3>
+      <label class="switch"><input type="checkbox" id="animOn"><span class="knob"></span> 啟用動畫</label>
+      <div id="animBox">
+        <label class="f">進場方式</label>
+        <div class="seg" id="enter">
+          <button data-v="none">無</button>
+          <button data-v="slide">滑入</button>
+          <button data-v="pop">彈出</button>
+          <button data-v="fade">淡入</button>
+          <button data-v="drop">掉落</button>
+        </div>
+        <label class="check"><input type="checkbox" id="loop"> 循環播放（進場 → 停留 → 退場 → 再來一次）</label>
+        <label class="f">停留秒數</label>
+        <div class="row"><input type="range" id="hold" min="2" max="60" value="8"><span class="range-val" id="holdV"></span></div>
+        <label class="f">持續效果<span class="hint">可多選</span></label>
+        <div class="fxgrid">
+          <label class="check"><input type="checkbox" id="fxShine" checked> ✨ 光澤掃過</label>
+          <label class="check"><input type="checkbox" id="fxPulse"> 💓 呼吸縮放</label>
+          <label class="check"><input type="checkbox" id="fxBlink" checked> 🔴 LIVE 紅點閃爍</label>
+          <label class="check"><input type="checkbox" id="fxGlow"> 💡 外框發光</label>
+          <label class="check"><input type="checkbox" id="fxWiggle"> 〰️ 定時搖擺</label>
+          <label class="check"><input type="checkbox" id="fxScan"> 📷 QR 掃描線</label>
+          <label class="check"><input type="checkbox" id="fxSparkle"> ⭐ 閃亮星星</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>顏色微調</h3>
+      <div class="colors">
+        <label><input type="color" id="c_fill"> 底色</label>
+        <label><input type="color" id="c_fill2"> 底色漸層</label>
+        <label><input type="color" id="c_border"> 外框</label>
+        <label><input type="color" id="c_outline"> 描邊線</label>
+        <label><input type="color" id="c_text"> 文字</label>
+        <label><input type="color" id="c_hl"> 強調色</label>
+        <label><input type="color" id="c_sub"> 副標題</label>
+        <label><input type="color" id="c_textStrokeColor"> 文字描邊</label>
+        <label><input type="color" id="c_badgeBg"> 標籤底</label>
+        <label><input type="color" id="c_badgeText"> 標籤字</label>
+        <label><input type="color" id="c_qrFg"> QR 點</label>
+        <label><input type="color" id="c_qrBg"> QR 底</label>
+        <label><input type="color" id="c_labelBg"> 小字底</label>
+        <label><input type="color" id="c_labelText"> 小字顏色</label>
+      </div>
+      <label class="check"><input type="checkbox" id="transparent" checked> 匯出透明背景</label>
+    </div>
+  </aside>
+
+  <section class="preview">
+    <div class="toolbar">
+      <div class="bgpick">預覽背景
+        <button data-bg="checker" class="on" title="透明格" style="background:conic-gradient(#555 25%,#888 0 50%,#555 0 75%,#888 0)"></button>
+        <button data-bg="photo" title="模擬畫面" style="background:linear-gradient(135deg,#5b7a99,#b08f6e,#3e5a45)"></button>
+        <button data-bg="dark" title="深色" style="background:#111"></button>
+        <button data-bg="light" title="淺色" style="background:#f1f1f1"></button>
+        <button data-bg="green" title="綠幕" style="background:#00b140"></button>
+      </div>
+      <div class="spacer"></div>
+      <span class="meta" id="sizeInfo"></span>
+    </div>
+    <div class="stage checker" id="stage"><canvas id="out"></canvas></div>
+    <div class="toolbar">
+      <label class="meta">匯出倍率
+        <select id="scale" style="width:auto;margin-left:6px">
+          <option value="1">1x</option>
+          <option value="2" selected>2x（建議）</option>
+          <option value="3">3x</option>
+        </select>
+      </label>
+      <div class="spacer"></div>
+      <button class="btn ghost anim-only" id="btnReplay">↻ 重播</button>
+      <button class="btn ghost anim-only" id="btnObs" title="貼到 OBS「瀏覽器」來源的網址欄，背景自動透明">複製 OBS 連結</button>
+      <button class="btn ghost anim-only" id="btnWebm">錄製 WebM</button>
+      <button class="btn ghost" id="btnCopy">複製圖片</button>
+      <button class="btn ghost" id="btnQrOnly">只下載 QR</button>
+      <button class="btn" id="btnDownload">下載 PNG</button>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const FONT = '"Microsoft JhengHei","PingFang TC","Noto Sans TC","Heiti TC",sans-serif';
+
+// ---------- Templates ----------
+// shape / italic / badgeStyle are defaults applied when the template is picked
+const BASE = {
+  textStroke: 0, textStrokeColor: '#000000', glow: null, shine: false, hardShadow: false,
+  textShadow: null, goldText: false, fillAlpha: 1, qrBorder: '#1a1a1a',
+  shape: 'pill', italic: false, badgeStyle: 'inside',
+};
+const TEMPLATES = {
+  classic: { name: '經典紅框',
+    fill: '#ffffff', fill2: '#ffffff', border: '#e62020', outline: '#1a1a1a',
+    text: '#111111', hl: '#e62020', sub: '#555555', textStrokeColor: '#ffffff',
+    badgeBg: '#e62020', badgeText: '#ffffff',
+    qrFg: '#000000', qrBg: '#ffffff', labelBg: '#ffffff', labelText: '#111111', qrBorder: '#1a1a1a', shine: true },
+  live: { name: '直播紅',
+    fill: '#ff4545', fill2: '#c40d1e', border: '#ffffff', outline: '#6b0010',
+    text: '#ffffff', hl: '#ffe14a', sub: '#ffe0e0', textStroke: 5, textStrokeColor: '#6b0010',
+    badgeBg: '#ffe14a', badgeText: '#8a0012',
+    qrFg: '#000000', qrBg: '#ffffff', labelBg: '#c40d1e', labelText: '#ffffff', qrBorder: '#ffffff', shine: true },
+  neon: { name: '霓虹夜',
+    fill: '#1b0f2e', fill2: '#0a0716', border: '#ff3fd2', outline: '#3ef6ff',
+    text: '#ffffff', hl: '#3ef6ff', sub: '#d9b8ff',
+    badgeBg: '#ff3fd2', badgeText: '#ffffff',
+    qrFg: '#120a22', qrBg: '#ffffff', labelBg: '#1b0f2e', labelText: '#3ef6ff', qrBorder: '#ff3fd2', glow: '#ff3fd2' },
+  gold: { name: '黑金',
+    fill: '#2b2b2b', fill2: '#0d0d0d', border: '#e8c15c', outline: '#7a5a12',
+    text: '#f7e3a1', hl: '#ffffff', sub: '#c9b27a',
+    badgeBg: '#e8c15c', badgeText: '#1a1a1a',
+    qrFg: '#111111', qrBg: '#fdf6e3', labelBg: '#111111', labelText: '#e8c15c', qrBorder: '#e8c15c',
+    shine: true, goldText: true, shape: 'round' },
+  ocean: { name: '清爽藍',
+    fill: '#3aa8ff', fill2: '#1460e6', border: '#ffffff', outline: '#0b2f7a',
+    text: '#ffffff', hl: '#fff36b', sub: '#dcefff', textStroke: 4, textStrokeColor: '#0b2f7a',
+    badgeBg: '#ffffff', badgeText: '#1460e6',
+    qrFg: '#0b2f7a', qrBg: '#ffffff', labelBg: '#1460e6', labelText: '#ffffff', qrBorder: '#ffffff', shine: true },
+  sakura: { name: '粉嫩',
+    fill: '#fff0f6', fill2: '#ffd6e8', border: '#ff7eb6', outline: '#ffffff',
+    text: '#7a2350', hl: '#ff3d8b', sub: '#b0577f', textStrokeColor: '#ffffff',
+    badgeBg: '#ff7eb6', badgeText: '#ffffff',
+    qrFg: '#7a2350', qrBg: '#ffffff', labelBg: '#ff7eb6', labelText: '#ffffff', qrBorder: '#ff7eb6',
+    shine: true, shape: 'bubble' },
+  mono: { name: '極簡黑',
+    fill: '#111111', fill2: '#111111', border: '#111111', outline: '#ffffff',
+    text: '#ffffff', hl: '#ff4d4d', sub: '#aaaaaa',
+    badgeBg: '#ff4d4d', badgeText: '#ffffff',
+    qrFg: '#000000', qrBg: '#ffffff', labelBg: '#111111', labelText: '#ffffff', qrBorder: '#111111', shape: 'square' },
+  lime: { name: '螢光綠',
+    fill: '#d4ff3a', fill2: '#a8e600', border: '#111111', outline: '#111111',
+    text: '#111111', hl: '#e6007a', sub: '#333333', textStrokeColor: '#ffffff',
+    badgeBg: '#111111', badgeText: '#d4ff3a',
+    qrFg: '#111111', qrBg: '#ffffff', labelBg: '#111111', labelText: '#d4ff3a', qrBorder: '#111111', hardShadow: true },
+  comic: { name: '漫畫爆炸',
+    fill: '#ffe23d', fill2: '#ffb800', border: '#111111', outline: '#111111',
+    text: '#ff2a2a', hl: '#1a5cff', sub: '#111111', textStroke: 4, textStrokeColor: '#111111',
+    badgeBg: '#1a5cff', badgeText: '#ffffff',
+    qrFg: '#111111', qrBg: '#ffffff', labelBg: '#ff2a2a', labelText: '#ffffff', qrBorder: '#111111',
+    hardShadow: true, textShadow: '#111111', shape: 'slant', italic: true, badgeStyle: 'top' },
+  esports: { name: '電競紫',
+    fill: '#6a2cff', fill2: '#1d0b5c', border: '#00f0ff', outline: '#0a0420',
+    text: '#ffffff', hl: '#00f0ff', sub: '#b9a8ff', textStroke: 0,
+    badgeBg: '#00f0ff', badgeText: '#14063d',
+    qrFg: '#14063d', qrBg: '#ffffff', labelBg: '#14063d', labelText: '#00f0ff', qrBorder: '#00f0ff',
+    glow: '#00f0ff', shape: 'slant', italic: true },
+  sunset: { name: '夕陽漸層',
+    fill: '#ffb347', fill2: '#ff4f81', border: '#ffffff', outline: '#5a1d4a',
+    text: '#ffffff', hl: '#fff7b0', sub: '#fff0f5', textStroke: 4, textStrokeColor: '#5a1d4a',
+    badgeBg: '#5a1d4a', badgeText: '#ffe7a8',
+    qrFg: '#5a1d4a', qrBg: '#ffffff', labelBg: '#ff4f81', labelText: '#ffffff', qrBorder: '#ffffff',
+    shine: true, shape: 'ribbon' },
+  mint: { name: '薄荷清新',
+    fill: '#e6fff7', fill2: '#b8f2df', border: '#18a58a', outline: '#ffffff',
+    text: '#0d4f43', hl: '#ff6b4a', sub: '#2f7f6f', textStrokeColor: '#ffffff',
+    badgeBg: '#18a58a', badgeText: '#ffffff',
+    qrFg: '#0d4f43', qrBg: '#ffffff', labelBg: '#18a58a', labelText: '#ffffff', qrBorder: '#18a58a',
+    shine: true, shape: 'round' },
+  festive: { name: '喜氣紅金',
+    fill: '#c8102e', fill2: '#7d0016', border: '#f6c453', outline: '#4a000c',
+    text: '#ffe39a', hl: '#ffffff', sub: '#ffd27a', textStrokeColor: '#4a000c',
+    badgeBg: '#f6c453', badgeText: '#7d0016',
+    qrFg: '#4a000c', qrBg: '#fff8e6', labelBg: '#c8102e', labelText: '#ffe39a', qrBorder: '#f6c453',
+    goldText: true, shine: true, shape: 'ticket', badgeStyle: 'circle' },
+  cafe: { name: '咖啡文青',
+    fill: '#f6eddc', fill2: '#ead9bb', border: '#6b4426', outline: '#f6eddc',
+    text: '#4a2d17', hl: '#c0552b', sub: '#7d5a3c', textStrokeColor: '#ffffff',
+    badgeBg: '#6b4426', badgeText: '#f6eddc',
+    qrFg: '#3b2413', qrBg: '#fffaf0', labelBg: '#6b4426', labelText: '#f6eddc', qrBorder: '#6b4426',
+    shape: 'square', badgeStyle: 'top' },
+  market: { name: '夜市招牌',
+    fill: '#151515', fill2: '#000000', border: '#ffd000', outline: '#ff3d00',
+    text: '#ffd000', hl: '#ffffff', sub: '#ffb37a', textStroke: 0,
+    badgeBg: '#ff3d00', badgeText: '#ffffff',
+    qrFg: '#000000', qrBg: '#ffffff', labelBg: '#ffd000', labelText: '#000000', qrBorder: '#ffd000',
+    glow: '#ffb000', shape: 'arrow' },
+  glass: { name: '毛玻璃',
+    fill: '#ffffff', fill2: '#d9e6ff', border: '#ffffff', outline: '#ffffff',
+    text: '#ffffff', hl: '#ffe66b', sub: '#eef3ff', textStroke: 0, textStrokeColor: '#1d2a4a',
+    badgeBg: '#ffffff', badgeText: '#2a3a66',
+    qrFg: '#1d2a4a', qrBg: '#ffffff', labelBg: '#2a3a66', labelText: '#ffffff', qrBorder: '#ffffff',
+    fillAlpha: 0.22, textShadow: 'rgba(0,0,30,.45)', shape: 'round' },
+};
+for (const k in TEMPLATES) TEMPLATES[k] = { ...BASE, ...TEMPLATES[k] };
+const COLOR_KEYS = ['fill','fill2','border','outline','text','hl','sub','textStrokeColor','badgeBg','badgeText','qrFg','qrBg','labelBg','labelText'];
+
+// ---------- State ----------
+const $ = id => document.getElementById(id);
+let state = {
+  tpl: 'classic',
+  colors: { ...TEMPLATES.classic },
+  qrPos: 'right', dotStyle: 'square', align: 'center', shape: 'pill', badgeStyle: 'inside', enter: 'slide',
+};
+
+// ---------- QR ----------
+function makeQR(text, ecl) {
+  qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+  const qr = qrcode(0, ecl);
+  qr.addData(text, 'Byte');
+  qr.make();
+  return qr;
+}
+
+const ALIGN_POS = [[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],
+  [6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],
+  [6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],
+  [6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],
+  [6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]];
+
+function drawQR(ctx, qr, x, y, size, fg, bg, style, quiet = 2) {
+  const n = qr.getModuleCount();
+  const cell = size / (n + quiet * 2);
+  ctx.fillStyle = bg;
+  ctx.fillRect(x, y, size, size);
+  ctx.fillStyle = fg;
+  const ox = x + quiet * cell, oy = y + quiet * cell;
+  const isFinder = (r, c) => (r < 7 && c < 7) || (r < 7 && c >= n - 7) || (r >= n - 7 && c < 7);
+  // alignment patterns must stay solid or many scanners fail on dot styles
+  const pos = ALIGN_POS[(n - 17) / 4 - 1] || [];
+  const aligns = [];
+  for (const ar of pos) for (const ac of pos) {
+    if ((ar <= 8 && ac <= 8) || (ar <= 8 && ac >= n - 9) || (ar >= n - 9 && ac <= 8)) continue;
+    aligns.push([ar, ac]);
+  }
+  const isAlign = (r, c) => aligns.some(([ar, ac]) => Math.abs(r - ar) <= 2 && Math.abs(c - ac) <= 2);
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      if (!qr.isDark(r, c)) continue;
+      if (style !== 'square' && (isFinder(r, c) || isAlign(r, c))) continue;
+      const px = ox + c * cell, py = oy + r * cell;
+      if (style === 'square') {
+        ctx.fillRect(px, py, cell + 0.5, cell + 0.5); // slight overlap avoids hairline seams
+      } else if (style === 'dot') {
+        ctx.beginPath(); ctx.arc(px + cell / 2, py + cell / 2, cell * 0.43, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.beginPath(); ctx.roundRect(px + cell * 0.06, py + cell * 0.06, cell * 0.88, cell * 0.88, cell * 0.3); ctx.fill();
+      }
+    }
+  }
+  if (style !== 'square') {
+    for (const [fr, fc] of [[0, 0], [0, n - 7], [n - 7, 0]]) {
+      const fx = ox + fc * cell, fy = oy + fr * cell;
+      ctx.fillStyle = fg; ctx.beginPath(); ctx.roundRect(fx, fy, cell * 7, cell * 7, cell * 2); ctx.fill();
+      ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(fx + cell, fy + cell, cell * 5, cell * 5, cell * 1.4); ctx.fill();
+      ctx.fillStyle = fg; ctx.beginPath(); ctx.roundRect(fx + cell * 2, fy + cell * 2, cell * 3, cell * 3, cell); ctx.fill();
+    }
+    for (const [ar, ac] of aligns) {
+      const ax = ox + (ac - 2) * cell, ay = oy + (ar - 2) * cell;
+      ctx.fillStyle = fg; ctx.beginPath(); ctx.roundRect(ax, ay, cell * 5, cell * 5, cell * 1.3); ctx.fill();
+      ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(ax + cell, ay + cell, cell * 3, cell * 3, cell * 0.8); ctx.fill();
+      ctx.fillStyle = fg; ctx.beginPath(); ctx.roundRect(ax + cell * 2, ay + cell * 2, cell, cell, cell * 0.3); ctx.fill();
+    }
+  }
+}
+
+// ---------- Helpers ----------
+function splitSegments(text, highlight) {
+  if (!highlight) return [{ t: text, hl: false }];
+  const re = /(\d{1,2}\s*[:：]\s*\d{2}(?:\s*[-~～至]\s*\d{1,2}\s*[:：]\s*\d{2})?)/g;
+  const out = []; let last = 0, m;
+  while ((m = re.exec(text))) {
+    if (m.index > last) out.push({ t: text.slice(last, m.index), hl: false });
+    out.push({ t: m[0], hl: true });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push({ t: text.slice(last), hl: false });
+  return out;
+}
+
+// Extra horizontal room each shape needs at its ends, as a fraction of height
+function shapeInsets(shape, h) {
+  switch (shape) {
+    case 'slant':  return { l: h * 0.24, r: h * 0.24 };
+    case 'ribbon': return { l: h * 0.26, r: h * 0.26 };
+    case 'arrow':  return { l: 0, r: h * 0.34 };
+    case 'ticket': return { l: h * 0.08, r: h * 0.08 };
+    default:       return { l: 0, r: 0 };
+  }
+}
+function shapeRadius(shape, h, tall) {
+  if (shape === 'pill') return tall ? h * 0.3 : h / 2;
+  if (shape === 'round' || shape === 'bubble') return Math.min(h * 0.24, 26);
+  if (shape === 'arrow') return Math.min(h * 0.24, 22);
+  return 3;
+}
+
+function shapePath(ctx, shape, x, y, w, h, r) {
+  ctx.beginPath();
+  if (shape === 'slant') {
+    const k = h * 0.24;
+    ctx.moveTo(x + k, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w - k, y + h); ctx.lineTo(x, y + h);
+  } else if (shape === 'ribbon') {
+    const n = h * 0.24;
+    ctx.moveTo(x, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w - n, y + h / 2); ctx.lineTo(x + w, y + h);
+    ctx.lineTo(x, y + h); ctx.lineTo(x + n, y + h / 2);
+  } else if (shape === 'arrow') {
+    const t = h * 0.34;
+    ctx.moveTo(x + r, y); ctx.lineTo(x + w - t, y); ctx.lineTo(x + w, y + h / 2); ctx.lineTo(x + w - t, y + h);
+    ctx.lineTo(x + r, y + h); ctx.arcTo(x, y + h, x, y + h - r, r); ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r);
+  } else if (shape === 'ticket') {
+    const q = h * 0.17;
+    ctx.moveTo(x + q, y); ctx.lineTo(x + w - q, y);
+    ctx.arc(x + w, y, q, Math.PI, Math.PI / 2, true); ctx.lineTo(x + w, y + h - q);
+    ctx.arc(x + w, y + h, q, Math.PI * 1.5, Math.PI, true); ctx.lineTo(x + q, y + h);
+    ctx.arc(x, y + h, q, 0, Math.PI * 1.5, true); ctx.lineTo(x, y + q);
+    ctx.arc(x, y, q, Math.PI / 2, 0, true);
+  } else if (shape === 'bubble') {
+    // rounded box with a little tail at the bottom-left
+    const tx = x + Math.min(w * 0.18, h * 0.7), tw = h * 0.22, th = h * 0.2;
+    ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(tx + tw, y + h); ctx.lineTo(tx - tw * 0.2, y + h + th); ctx.lineTo(tx, y + h);
+    ctx.lineTo(x + r, y + h); ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r);
+  } else {
+    ctx.roundRect(x, y, w, h, r);
+  }
+  ctx.closePath();
+}
+
+// ---------- Main render (base units, multiplied by scale) ----------
+function render(canvas, opts, scale = 1) {
+  const c = opts.colors;
+  const m = document.createElement('canvas').getContext('2d');
+  const fs = opts.fontSize;
+  const bw = opts.border;
+  const ow = bw > 0 ? Math.max(2, Math.round(bw * 0.28)) : 0;
+  const ext = bw > 0 ? bw / 2 + ow : 0;          // stroke outside the shape
+  const shape = opts.shape;
+  const pos = opts.qr ? opts.qrPos : 'none';
+  const inline = pos === 'inRight' || pos === 'inLeft';
+  const stack = pos === 'stack';
+  const alignF = { left: 0, center: 0.5, right: 1 }[opts.align];
+  const italicSkew = opts.italic ? 0.2 : 0;
+
+  // --- text block ---
+  const font = `900 ${fs}px ${FONT}`;
+  const lh = fs * 1.2;
+  const lines = (opts.title || ' ').split('\n').map(l => splitSegments(l, opts.hlTime));
+  m.font = font;
+  const lineW = lines.map(segs => segs.reduce((s, g) => s + m.measureText(g.t).width, 0) + fs * italicSkew * 0.5);
+  const subFs = Math.round(fs * 0.42);
+  const subFont = `700 ${subFs}px ${FONT}`;
+  m.font = subFont;
+  const subW = opts.subtitle ? m.measureText(opts.subtitle).width : 0;
+  const subH = opts.subtitle ? subFs * 1.35 + fs * 0.08 : 0;
+  const textW = Math.max(...lineW, subW);
+  const textH = lines.length * lh + subH;
+
+  // --- badge ---
+  const badgeFs = Math.round(fs * 0.42);
+  const badgeFont = `900 ${badgeFs}px ${FONT}`;
+  m.font = badgeFont;
+  const badgeTW = opts.badge ? m.measureText(opts.badge).width : 0;
+  const badgeH = Math.round(fs * 0.86);
+  const badgeW = opts.badge ? Math.max(badgeH * 1.1, badgeTW + badgeFs * 1.3) : 0;
+  const bStyle = opts.badge ? opts.badgeStyle : 'none';
+  const circleD = bStyle === 'circle' ? Math.max(fs * 1.9, badgeTW + badgeFs * 1.6) : 0;
+
+  // --- QR card ---
+  const qrSize = opts.qrSize;
+  const labelFs = Math.round(qrSize * 0.12);
+  const labelH = opts.qrLabel ? Math.round(labelFs * 1.7) : 0;
+  const cardPad = Math.round(qrSize * 0.05);
+  const showCard = pos !== 'none';
+  const cardW = showCard ? qrSize + cardPad * 2 : 0;
+  const cardH = showCard ? qrSize + cardPad * 2 + labelH : 0;
+  const gap = Math.round(fs * 0.4);
+
+  // --- banner geometry ---
+  let bannerH, bannerW, items = [];
+  if (stack) {
+    // vertical card: text on top, QR below, all inside one shape
+    const innerW = Math.max(textW, cardW);
+    const padY = fs * 0.4;
+    bannerH = padY + textH + gap + cardH + padY;
+    const r = shapeRadius(shape === 'pill' ? 'round' : shape, Math.min(bannerH, innerW), true);
+    const si = shapeInsets(shape, Math.min(bannerH, fs * 2));
+    bannerW = innerW + fs * 0.9 + si.l + si.r + (bStyle === 'inside' ? 0 : 0);
+    var stackInfo = { padY, innerW, si, r };
+  } else {
+    const padY = fs * 0.2;
+    const textBoxH = textH + padY * 2;
+    bannerH = inline ? Math.max(textBoxH, cardH + fs * 0.36) : Math.max(textBoxH, fs * 1.5);
+    const r = shapeRadius(shape, bannerH, inline || lines.length > 1 || opts.subtitle);
+    const si = shapeInsets(shape, bannerH);
+    const padX = r * 0.5 + fs * 0.32;
+    const cardInset = Math.max((bannerH - cardH) / 2, r * 0.32 + 4);
+    // horizontal sequence of content items
+    if (pos === 'inLeft') items.push({ k: 'card', w: cardW });
+    if (bStyle === 'inside') items.push({ k: 'badge', w: badgeW });
+    items.push({ k: 'text', w: textW });
+    if (pos === 'inRight') items.push({ k: 'card', w: cardW });
+    const innerGap = (a, b) => (a.k === 'badge' ? fs * 0.3 : gap * 0.8);
+    let total = 0;
+    items.forEach((it, i) => { total += it.w + (i ? innerGap(items[i - 1], it) : 0); });
+    const leftPad = (items[0].k === 'card' ? cardInset : padX) + si.l;
+    const rightPad = (items[items.length - 1].k === 'card' ? cardInset : padX) + si.r;
+    bannerW = leftPad + total + rightPad;
+    let cx = leftPad;
+    items.forEach((it, i) => { if (i) cx += innerGap(items[i - 1], it); it.x = cx; cx += it.w; });
+    var rowInfo = { r, padY };
+  }
+  if (bStyle === 'circle') bannerW += circleD * 0.45;   // room for the stamp overlapping the left end
+
+  // --- place things (banner at 0,0 before translate) ---
+  const bx = bStyle === 'circle' ? 0 : 0;
+  const B = { x: bx, y: 0, w: bannerW, h: bannerH };
+  let card = null;
+  if (showCard && !inline && !stack) {
+    const g = gap + ext;
+    if (pos === 'right') card = { x: B.x + B.w + g, y: B.h / 2 - cardH / 2 };
+    else if (pos === 'left') card = { x: B.x - g - cardW, y: B.h / 2 - cardH / 2 };
+    else {
+      const x = B.x + (B.w - cardW) * alignF;
+      const extraTop = bStyle === 'top' && pos === 'top' ? badgeH * 0.6 : 0;
+      card = pos === 'top' ? { x, y: -g - extraTop - cardH } : { x, y: B.h + g + (shape === 'bubble' ? B.h * 0.2 : 0) };
+    }
+  }
+
+  // bounding box
+  const boxes = [[B.x - ext, B.y - ext, B.x + B.w + ext + (c.hardShadow ? 6 : 0), B.y + B.h + ext + (c.hardShadow ? 6 : 0) + (shape === 'bubble' ? B.h * 0.2 : 0)]];
+  if (card) boxes.push([card.x - 2, card.y - 2, card.x + cardW + 2 + (c.hardShadow ? 5 : 0), card.y + cardH + 2 + (c.hardShadow ? 5 : 0)]);
+  if (bStyle === 'top') boxes.push([0, -badgeH * 0.6 - 2, 0, 0]);
+  if (bStyle === 'circle') boxes.push([-circleD * 0.25, B.h / 2 - circleD / 2 - 2, 0, B.h / 2 + circleD / 2 + 2]);
+  const minX = Math.min(...boxes.map(b => b[0])), minY = Math.min(...boxes.map(b => b[1]));
+  const maxX = Math.max(...boxes.map(b => b[2])), maxY = Math.max(...boxes.map(b => b[3]));
+  const margin = c.glow ? 26 : 16;
+  const W = Math.ceil(maxX - minX + margin * 2), H = Math.ceil(maxY - minY + margin * 2);
+  const dx = margin - minX, dy = margin - minY;
+
+  const ctx = canvas.getContext('2d');
+  canvas.width = W * scale; canvas.height = H * scale;
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (!opts.transparent) { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H); }
+  ctx.translate(dx, dy);
+
+  const r = stack ? stackInfo.r : rowInfo.r;
+  const path = () => shapePath(ctx, shape, B.x, B.y, B.w, B.h, r);
+  let dotInfo = null, qrRect = null;   // geometry handed to the animation layer
+
+  // --- banner fill ---
+  ctx.save();
+  if (c.hardShadow) {
+    ctx.translate(6, 6); ctx.fillStyle = c.outline; path(); ctx.fill(); ctx.translate(-6, -6);
+  } else {
+    ctx.shadowColor = c.glow || 'rgba(0,0,0,.35)';
+    ctx.shadowBlur = c.glow ? 26 : 12; ctx.shadowOffsetY = c.glow ? 0 : 4;
+  }
+  const g = ctx.createLinearGradient(0, B.y, 0, B.y + B.h);
+  g.addColorStop(0, c.fill); g.addColorStop(1, c.fill2);
+  ctx.fillStyle = g;
+  ctx.globalAlpha = c.fillAlpha;
+  path(); ctx.fill();
+  ctx.restore();
+
+  if (c.shine) {
+    ctx.save(); path(); ctx.clip();
+    const sh = Math.min(B.h * 0.55, fs * 0.9);
+    const sg = ctx.createLinearGradient(0, B.y, 0, B.y + sh);
+    sg.addColorStop(0, 'rgba(255,255,255,.35)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = sg; ctx.fillRect(B.x, B.y, B.w, sh);
+    ctx.restore();
+  }
+
+  if (bw > 0) {
+    ctx.save();
+    ctx.lineJoin = 'round';
+    if (c.glow) { ctx.shadowColor = c.glow; ctx.shadowBlur = 18; }
+    ctx.globalAlpha = c.fillAlpha < 1 ? 0.6 : 1;
+    ctx.strokeStyle = c.outline; ctx.lineWidth = bw + ow * 2;
+    path(); ctx.stroke();
+    ctx.shadowBlur = 0; ctx.globalAlpha = c.fillAlpha < 1 ? 0.85 : 1;
+    if (c.goldText) {
+      const bg2 = ctx.createLinearGradient(0, B.y, 0, B.y + B.h);
+      bg2.addColorStop(0, '#fff2b8'); bg2.addColorStop(.5, c.border); bg2.addColorStop(1, '#a8781e');
+      ctx.strokeStyle = bg2;
+    } else ctx.strokeStyle = c.border;
+    ctx.lineWidth = bw;
+    path(); ctx.stroke();
+    ctx.restore();
+  }
+
+  // --- helpers to draw text block & card ---
+  const drawTextBlock = (x0, y0, blockW) => {
+    const tAlign = stack ? 0.5 : alignF;
+    lines.forEach((segs, i) => {
+      const lw = lineW[i];
+      let x = x0 + (blockW - lw) * tAlign;
+      const ty = y0 + i * lh + lh / 2 + fs * 0.04;
+      ctx.font = font; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      for (const s of segs) {
+        const w = ctx.measureText(s.t).width;
+        ctx.save();
+        ctx.translate(x, ty);
+        if (italicSkew) ctx.transform(1, 0, -italicSkew, 1, 0, 0);
+        if (c.textShadow) {
+          ctx.save();
+          if (c.fillAlpha < 1) { ctx.shadowColor = c.textShadow; ctx.shadowBlur = 8; ctx.shadowOffsetY = 2; ctx.fillStyle = 'rgba(0,0,0,0)'; }
+          else { ctx.fillStyle = c.textShadow; ctx.translate(fs * 0.07, fs * 0.07); if (c.textStroke > 0) { ctx.lineJoin = 'round'; ctx.strokeStyle = c.textShadow; ctx.lineWidth = c.textStroke * 2; ctx.strokeText(s.t, 0, 0); } }
+          ctx.fillText(s.t, 0, 0);
+          ctx.restore();
+        }
+        if (c.textStroke > 0) {
+          ctx.lineJoin = 'round'; ctx.strokeStyle = c.textStrokeColor; ctx.lineWidth = c.textStroke * 2;
+          ctx.strokeText(s.t, 0, 0);
+        }
+        let fillStyle = s.hl ? c.hl : c.text;
+        if (c.goldText && !s.hl) {
+          const tg = ctx.createLinearGradient(0, -fs / 2, 0, fs / 2);
+          tg.addColorStop(0, '#fff6cf'); tg.addColorStop(.5, c.text); tg.addColorStop(1, '#c9962e');
+          fillStyle = tg;
+        }
+        if (c.glow) { ctx.shadowColor = s.hl ? c.hl : c.glow; ctx.shadowBlur = 16; }
+        else if (c.textShadow && c.fillAlpha < 1) { ctx.shadowColor = c.textShadow; ctx.shadowBlur = 8; ctx.shadowOffsetY = 2; }
+        ctx.fillStyle = fillStyle;
+        ctx.fillText(s.t, 0, 0);
+        ctx.restore();
+        x += w;
+      }
+    });
+    if (opts.subtitle) {
+      ctx.font = subFont; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+      const sx = x0 + (blockW - subW) * tAlign;
+      const sy = y0 + lines.length * lh + fs * 0.08 + subFs * 0.62;
+      ctx.save();
+      if (c.textShadow && c.fillAlpha < 1) { ctx.shadowColor = c.textShadow; ctx.shadowBlur = 6; }
+      ctx.fillStyle = c.sub; ctx.fillText(opts.subtitle, sx, sy);
+      ctx.restore();
+    }
+  };
+
+  const drawCard = (x, y, withShadow) => {
+    ctx.save();
+    if (withShadow) {
+      if (c.hardShadow) { ctx.fillStyle = c.qrBorder; ctx.beginPath(); ctx.roundRect(x + 5, y + 5, cardW, cardH, 12); ctx.fill(); }
+      else { ctx.shadowColor = c.glow || 'rgba(0,0,0,.35)'; ctx.shadowBlur = c.glow ? 22 : 10; ctx.shadowOffsetY = c.glow ? 0 : 4; }
+    }
+    ctx.fillStyle = c.qrBg;
+    ctx.beginPath(); ctx.roundRect(x, y, cardW, cardH, 12); ctx.fill();
+    ctx.restore();
+    if (opts.qrLabel) {
+      ctx.save();
+      ctx.beginPath(); ctx.roundRect(x, y, cardW, cardH, 12); ctx.clip();
+      ctx.fillStyle = c.labelBg; ctx.fillRect(x, y, cardW, labelH + cardPad * 0.6);
+      ctx.restore();
+      ctx.font = `900 ${labelFs}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = c.labelText;
+      ctx.fillText(opts.qrLabel, x + cardW / 2, y + (labelH + cardPad * 0.6) / 2 + labelFs * 0.05, cardW - 10);
+    }
+    drawQR(ctx, opts.qr, x + cardPad, y + cardPad + labelH, qrSize, c.qrFg, c.qrBg, opts.dotStyle, 1);
+    qrRect = { x: x + cardPad, y: y + cardPad + labelH, s: qrSize };
+    ctx.lineWidth = 3; ctx.strokeStyle = c.qrBorder;
+    ctx.beginPath(); ctx.roundRect(x, y, cardW, cardH, 12); ctx.stroke();
+  };
+
+  const drawBadge = (x, y, w, h) => {
+    ctx.fillStyle = c.badgeBg;
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, h / 2); ctx.fill();
+    if (bStyle === 'top') { ctx.lineWidth = Math.max(2, ow); ctx.strokeStyle = c.outline; ctx.stroke(); }
+    ctx.font = badgeFont; ctx.textBaseline = 'middle';
+    ctx.fillStyle = c.badgeText;
+    if (/^live$/i.test(opts.badge)) {
+      const dotR = badgeFs * 0.22;
+      const totalW = dotR * 2 + badgeFs * 0.25 + badgeTW;
+      const sx = x + (w - totalW) / 2;
+      ctx.beginPath(); ctx.arc(sx + dotR, y + h / 2, dotR, 0, Math.PI * 2); ctx.fill();
+      dotInfo = { x: sx + dotR, y: y + h / 2, r: dotR };
+      ctx.textAlign = 'left';
+      ctx.fillText(opts.badge, sx + dotR * 2 + badgeFs * 0.25, y + h / 2 + badgeFs * 0.04);
+    } else {
+      ctx.textAlign = 'center';
+      ctx.fillText(opts.badge, x + w / 2, y + h / 2 + badgeFs * 0.04);
+    }
+  };
+
+  const shiftX = bStyle === 'circle' ? circleD * 0.45 : 0;   // content shifts right past the stamp
+
+  // --- content ---
+  if (stack) {
+    const si = stackInfo.si;
+    const innerX = B.x + si.l + fs * 0.45 + shiftX;
+    const innerW = B.w - si.l - si.r - fs * 0.9 - shiftX;
+    drawTextBlock(innerX + (innerW - textW) / 2, B.y + stackInfo.padY, textW);
+    drawCard(innerX + (innerW - cardW) / 2, B.y + stackInfo.padY + textH + gap, false);
+    if (bStyle === 'inside') drawBadge(B.x + B.w / 2 - badgeW / 2, B.y - badgeH / 2, badgeW, badgeH);
+  } else {
+    for (const it of items) {
+      const x = B.x + it.x + shiftX;
+      if (it.k === 'text') drawTextBlock(x, B.y + (B.h - textH) / 2, textW);
+      else if (it.k === 'badge') drawBadge(x, B.y + (B.h - badgeH) / 2, badgeW, badgeH);
+      else if (it.k === 'card') drawCard(x, B.y + (B.h - cardH) / 2, false);
+    }
+  }
+  if (bStyle === 'top') {
+    const si = shapeInsets(shape, B.h);
+    drawBadge(B.x + si.l + (stack ? fs * 0.45 : r * 0.5 + fs * 0.2), B.y - badgeH * 0.6, badgeW, badgeH);
+  }
+  if (bStyle === 'circle') {
+    const cx = B.x + circleD * 0.25, cy = B.y + B.h / 2;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
+    ctx.fillStyle = c.badgeBg; ctx.beginPath(); ctx.arc(cx, cy, circleD / 2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.lineWidth = Math.max(3, bw * 0.6); ctx.strokeStyle = c.outline;
+    ctx.beginPath(); ctx.arc(cx, cy, circleD / 2, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([3, 4]); ctx.lineWidth = 2; ctx.strokeStyle = c.badgeText;
+    ctx.beginPath(); ctx.arc(cx, cy, circleD / 2 - 7, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(-0.18);
+    ctx.font = badgeFont; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = c.badgeText;
+    ctx.fillText(opts.badge, 0, badgeFs * 0.04, circleD - 18);
+    ctx.restore();
+  }
+
+  if (card) drawCard(card.x, card.y, true);
+  return { W, H, dx, dy, B, r, shape, bw, dot: dotInfo, qrRect, colors: c };
+}
+
+// ---------- Animation ----------
+const ease = {
+  outCubic: p => 1 - Math.pow(1 - p, 3),
+  outBack: p => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); },
+  outBounce: p => {
+    const n1 = 7.5625, d1 = 2.75;
+    if (p < 1 / d1) return n1 * p * p;
+    if (p < 2 / d1) return n1 * (p -= 1.5 / d1) * p + 0.75;
+    if (p < 2.5 / d1) return n1 * (p -= 2.25 / d1) * p + 0.9375;
+    return n1 * (p -= 2.625 / d1) * p + 0.984375;
+  },
+};
+const ENTER_DUR = { none: 0, slide: 0.8, pop: 0.7, fade: 0.8, drop: 1.1 };
+const EXIT_DUR = 0.5, LOOP_GAP = 0.8;
+
+function animTimeline(a) {
+  const enter = a.enter === 'none' ? 0 : ENTER_DUR[a.enter];
+  const cycle = a.loop && a.enter !== 'none' ? enter + a.hold + EXIT_DUR + LOOP_GAP : null;
+  return { enter, cycle };
+}
+
+// visibility progress 0..1 at time t (seconds) plus whether we are leaving
+function entranceAt(a, t) {
+  const { enter, cycle } = animTimeline(a);
+  if (!enter) return { e: 1, exiting: false };
+  let tt = cycle ? t % cycle : t;
+  if (tt < enter) return { e: tt / enter, exiting: false };
+  tt -= enter;
+  if (!cycle || tt < a.hold) return { e: 1, exiting: false };
+  tt -= a.hold;
+  if (tt < EXIT_DUR) return { e: 1 - tt / EXIT_DUR, exiting: true };
+  return { e: 0, exiting: true };
+}
+
+function star(ctx, x, y, s) {
+  ctx.beginPath();
+  ctx.moveTo(x, y - s);
+  ctx.quadraticCurveTo(x, y, x + s, y); ctx.quadraticCurveTo(x, y, x, y + s);
+  ctx.quadraticCurveTo(x, y, x - s, y); ctx.quadraticCurveTo(x, y, x, y - s);
+  ctx.fill();
+}
+
+// Draws one frame: the cached static banner plus animated layers.
+// pad = transparent room around the banner (base units) so motion is not clipped.
+function drawFrame(out, cache, geo, a, t, S, pad) {
+  const ctx = out.getContext('2d');
+  const W = geo.W + pad * 2, H = geo.H + pad * 2;
+  if (out.width !== Math.round(W * S) || out.height !== Math.round(H * S)) {
+    out.width = Math.round(W * S); out.height = Math.round(H * S);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, out.width, out.height);
+  if (!a.on) { ctx.drawImage(cache, pad * S, pad * S); return; }
+
+  const c = geo.colors, fx = a.fx;
+  const TAU = Math.PI * 2;
+  // --- global transform ---
+  let alpha = 1, tx = 0, ty = 0, sc = 1, rot = 0;
+  const { e, exiting } = entranceAt(a, t);
+  if (e < 1) {
+    if (a.enter === 'slide') tx = (exiting ? 1 : -1) * (W) * (1 - ease.outCubic(e));
+    else if (a.enter === 'pop') { sc = exiting ? e : ease.outBack(e); alpha = Math.min(1, e * 3); }
+    else if (a.enter === 'fade') { alpha = e; ty = 14 * (1 - e); }
+    else if (a.enter === 'drop') ty = -(H) * (1 - (exiting ? ease.outCubic(e) : ease.outBounce(e)));
+  }
+  if (fx.pulse) sc *= 1 + 0.025 * Math.sin(t * TAU / 1.8);
+  if (fx.wiggle) {
+    const p = (t % 3.5) / 0.7;
+    if (p < 1) rot = 0.035 * Math.sin(p * Math.PI * 6) * (1 - p);
+  }
+  if (alpha <= 0 || sc <= 0) return;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const cx = W * S / 2, cy = H * S / 2;
+  ctx.translate(cx + tx * S, cy + ty * S); ctx.rotate(rot); ctx.scale(sc, sc); ctx.translate(-cx, -cy);
+  ctx.drawImage(cache, pad * S, pad * S);
+
+  // --- layers in banner coordinates ---
+  ctx.translate(pad * S, pad * S); ctx.scale(S, S); ctx.translate(geo.dx, geo.dy);
+  const B = geo.B;
+  const path = () => shapePath(ctx, geo.shape, B.x, B.y, B.w, B.h, geo.r);
+
+  if (fx.glow) {
+    const k = (1 - Math.cos(t * TAU / 1.6)) / 2;
+    ctx.save();
+    ctx.shadowColor = c.glow || c.border; ctx.shadowBlur = (8 + 22 * k) * S * sc;
+    ctx.globalAlpha = alpha * (0.35 + 0.65 * k);
+    ctx.strokeStyle = c.glow || c.border; ctx.lineWidth = Math.max(3, geo.bw); ctx.lineJoin = 'round';
+    path(); ctx.stroke();
+    ctx.restore();
+  }
+  if (fx.shine) {
+    const p = (t % 2.8) / 1.0;
+    if (p < 1) {
+      ctx.save(); path(); ctx.clip();
+      const bandW = Math.max(40, B.h * 0.7);
+      const x = B.x - bandW * 2 + (B.w + bandW * 4) * ease.outCubic(p);
+      ctx.translate(x, B.y + B.h / 2); ctx.rotate(0.35);
+      const g = ctx.createLinearGradient(-bandW / 2, 0, bandW / 2, 0);
+      g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,.6)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g; ctx.fillRect(-bandW / 2, -B.h * 2, bandW, B.h * 4);
+      ctx.restore();
+    }
+  }
+  if (fx.blink && geo.dot && (t % 1.2) > 0.65) {
+    ctx.fillStyle = c.badgeBg;
+    ctx.beginPath(); ctx.arc(geo.dot.x, geo.dot.y, geo.dot.r + 0.8, 0, TAU); ctx.fill();
+  }
+  if (fx.scan && geo.qrRect) {
+    const q = geo.qrRect;
+    const p = (1 - Math.cos(t * TAU / 2.4)) / 2;
+    const y = q.y + q.s * p;
+    const down = Math.sin(t * TAU / 2.4) > 0;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(q.x, q.y, q.s, q.s); ctx.clip();
+    const trail = q.s * 0.18;
+    const g = ctx.createLinearGradient(0, down ? y - trail : y + trail, 0, y);
+    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, hexA(c.hl, 0.28));
+    ctx.fillStyle = g; ctx.fillRect(q.x, down ? y - trail : y, q.s, trail);
+    ctx.fillStyle = hexA(c.hl, 0.9); ctx.shadowColor = c.hl; ctx.shadowBlur = 8 * S;
+    ctx.fillRect(q.x, y - 1.5, q.s, 3);
+    ctx.restore();
+  }
+  if (fx.sparkle) {
+    const pts = [[0.04, 0.05], [0.97, 0.12], [0.35, -0.04], [0.72, 1.02], [0.12, 0.98], [0.88, 0.9], [0.55, 0.02]];
+    ctx.save();
+    ctx.fillStyle = '#ffffff'; ctx.shadowColor = c.hl; ctx.shadowBlur = 10 * S;
+    pts.forEach(([px, py], i) => {
+      const k = Math.sin(t * TAU / 1.7 + i * 1.9);
+      if (k > 0) star(ctx, B.x + B.w * px, B.y + B.h * py, Math.max(6, B.h * 0.13) * k);
+    });
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
+}
+
+// ---------- UI wiring ----------
+function readOpts() {
+  let qr = null;
+  $('qrErr').textContent = '';
+  const text = $('qrText').value.trim();
+  if (text) {
+    try { qr = makeQR(text, $('ecl').value); }
+    catch (e) { $('qrErr').textContent = '內容太長，無法產生 QR Code（試著縮短網址或降低容錯等級）'; }
+  }
+  return {
+    title: $('title').value.replace(/\s+$/, ''),
+    subtitle: $('subtitle').value.trim(),
+    badge: $('badge').value.trim(),
+    qrLabel: $('qrLabel').value.trim(),
+    hlTime: $('hlTime').checked,
+    italic: $('italic').checked,
+    fontSize: +$('fontSize').value,
+    qrSize: +$('qrSize').value,
+    border: +$('border').value,
+    transparent: $('transparent').checked,
+    qrPos: state.qrPos, dotStyle: state.dotStyle, align: state.align, shape: state.shape, badgeStyle: state.badgeStyle,
+    colors: state.colors, qr,
+  };
+}
+
+function readAnim() {
+  return {
+    on: $('animOn').checked, enter: state.enter, loop: $('loop').checked, hold: +$('hold').value,
+    fx: {
+      shine: $('fxShine').checked, pulse: $('fxPulse').checked, blink: $('fxBlink').checked, glow: $('fxGlow').checked,
+      wiggle: $('fxWiggle').checked, scan: $('fxScan').checked, sparkle: $('fxSparkle').checked,
+    },
+  };
+}
+// room around the banner so pop / pulse / wiggle / glow are not clipped
+const animPad = (geo, a) => a.on ? Math.round(Math.max(geo.W, geo.H) * 0.05) + 10 : 0;
+
+const OVERLAY = location.hash.startsWith('#overlay=');
+let view = { cache: null, geo: null, anim: null, S: 2, t0: performance.now(), raf: 0 };
+
+function update() {
+  $('fontSizeV').textContent = $('fontSize').value;
+  $('qrSizeV').textContent = $('qrSize').value;
+  $('borderV').textContent = $('border').value;
+  $('holdV').textContent = $('hold').value + 's';
+  const o = readOpts();
+  const a = readAnim();
+  const S = OVERLAY ? +$('scale').value : 2;
+  const cache = document.createElement('canvas');
+  const geo = render(cache, o, S);
+  view = { ...view, cache, geo, anim: a, S };
+  const pad = animPad(geo, a);
+  $('out').style.width = OVERLAY ? (geo.W + pad * 2) * S + 'px' : (geo.W + pad * 2) + 'px';
+  document.body.classList.toggle('anim', a.on);
+  $('animBox').classList.toggle('off', !a.on);
+  const sc = +$('scale').value;
+  $('sizeInfo').textContent = `匯出尺寸 ${geo.W * sc} × ${geo.H * sc} px` + (a.on ? `（動畫 ${(geo.W + pad * 2) * sc} × ${(geo.H + pad * 2) * sc}）` : '');
+  startLoop();
+  if (!OVERLAY) save();
+}
+
+function tick() {
+  const { cache, geo, anim, S } = view;
+  const t = (performance.now() - view.t0) / 1000;
+  drawFrame($('out'), cache, geo, anim, t, S, animPad(geo, anim));
+  view.raf = anim.on ? requestAnimationFrame(tick) : 0;
+}
+function startLoop() {
+  cancelAnimationFrame(view.raf);
+  tick();
+}
+function replay() { view.t0 = performance.now(); startLoop(); }
+
+// Record the animation to WebM (VP9/VP8 keep transparency in Chrome / Edge)
+async function recordWebm() {
+  if (!window.MediaRecorder) return toast('此瀏覽器不支援錄影');
+  const o = readOpts(), a = readAnim(), S = +$('scale').value;
+  const cache = document.createElement('canvas');
+  const geo = render(cache, o, S);
+  const pad = animPad(geo, a);
+  const { enter, cycle } = animTimeline(a);
+  const dur = cycle || (enter + 4);
+  const cv = document.createElement('canvas');
+  drawFrame(cv, cache, geo, a, 0, S, pad);
+  const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m));
+  const stream = cv.captureStream(30);
+  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8e6 });
+  const chunks = [];
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  const done = new Promise(r => rec.onstop = r);
+  const btn = $('btnWebm'); btn.disabled = true;
+  rec.start();
+  const t0 = performance.now();
+  await new Promise(res => {
+    const step = () => {
+      const t = (performance.now() - t0) / 1000;
+      drawFrame(cv, cache, geo, a, Math.min(t, dur), S, pad);
+      btn.textContent = `錄製中 ${Math.max(0, dur - t).toFixed(1)}s`;
+      if (t < dur) setTimeout(step, 1000 / 30); else res();
+    };
+    step();
+  });
+  rec.stop(); await done;
+  btn.disabled = false; btn.textContent = '錄製 WebM';
+  const blob = new Blob(chunks, { type: 'video/webm' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob); link.download = fileName().replace(/\.png$/, '.webm'); link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 4000);
+  toast(`已下載 WebM（${dur.toFixed(1)} 秒）`);
+  return blob;
+}
+
+function obsLink() {
+  const d = collect();
+  const bytes = new TextEncoder().encode(JSON.stringify(d));
+  let bin = ''; bytes.forEach(b => bin += String.fromCharCode(b));
+  return location.href.split('#')[0] + '#overlay=' + encodeURIComponent(btoa(bin));
+}
+
+function syncColorInputs() {
+  for (const k of COLOR_KEYS) $('c_' + k).value = state.colors[k];
+}
+
+let sampleQR;
+function buildTemplates() {
+  const box = $('templates');
+  box.innerHTML = '';
+  sampleQR = sampleQR || makeQR('https://example.com', 'L');
+  for (const [key, t] of Object.entries(TEMPLATES)) {
+    const el = document.createElement('div');
+    el.className = 'tpl' + (key === state.tpl ? ' on' : '');
+    const th = document.createElement('div'); th.className = 'th';
+    const cv = document.createElement('canvas');
+    render(cv, {
+      title: '稍後18:15', badge: 'LIVE', qrLabel: '掃描', subtitle: '', hlTime: true, italic: t.italic,
+      fontSize: 40, qrSize: 92, border: 7, transparent: true, align: 'center',
+      qrPos: 'right', dotStyle: 'square', shape: t.shape, badgeStyle: t.badgeStyle === 'circle' ? 'inside' : t.badgeStyle,
+      colors: t, qr: sampleQR,
+    }, 1);
+    th.appendChild(cv);
+    const nm = document.createElement('div'); nm.className = 'n'; nm.textContent = t.name;
+    el.append(th, nm);
+    el.onclick = () => {
+      state.tpl = key; state.colors = { ...t };
+      state.shape = t.shape; state.badgeStyle = t.badgeStyle;
+      $('italic').checked = t.italic;
+      syncColorInputs(); syncSegs(); buildTemplates(); update();
+    };
+    box.appendChild(el);
+  }
+}
+
+const SEGS = { qrPos: 'qrPos', dotStyle: 'dotStyle', align: 'align', shape: 'shape', badgeStyle: 'badgeStyle', enter: 'enter' };
+function syncSegs() {
+  for (const [id, key] of Object.entries(SEGS))
+    $(id).querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === state[key]));
+}
+function setupSegs() {
+  for (const [id, key] of Object.entries(SEGS)) {
+    $(id).querySelectorAll('button').forEach(b => b.onclick = () => { state[key] = b.dataset.v; syncSegs(); update(); });
+  }
+  syncSegs();
+}
+
+function exportCanvas(qrOnly = false) {
+  const o = readOpts();
+  const cv = document.createElement('canvas');
+  const sc = +$('scale').value;
+  if (qrOnly) {
+    if (!o.qr) return null;
+    const size = 512 * sc;
+    cv.width = cv.height = size;
+    drawQR(cv.getContext('2d'), o.qr, 0, 0, size, o.colors.qrFg, o.colors.qrBg, o.dotStyle, 4);
+    return cv;
+  }
+  render(cv, o, sc);
+  return cv;
+}
+
+function download(cv, name) {
+  cv.toBlob(b => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }, 'image/png');
+}
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+function fileName() {
+  const base = ($('title').value || 'qrcode').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 40);
+  return base + '.png';
+}
+
+// persist
+const STORE = 'qrbanner_v2';
+const FIELDS = ['qrText','title','subtitle','badge','qrLabel','fontSize','qrSize','border','ecl','scale','hold'];
+const CHECKS = ['hlTime','transparent','italic','animOn','loop','fxShine','fxPulse','fxBlink','fxGlow','fxWiggle','fxScan','fxSparkle'];
+const ANIM_IDS = ['animOn','loop','hold','fxShine','fxPulse','fxBlink','fxGlow','fxWiggle','fxScan','fxSparkle'];
+function collect() {
+  const d = { state };
+  FIELDS.forEach(f => d[f] = $(f).value);
+  CHECKS.forEach(f => d[f] = $(f).checked);
+  return d;
+}
+function apply(d) {
+  if (!d) return;
+  FIELDS.forEach(f => { if (d[f] != null) $(f).value = d[f]; });
+  CHECKS.forEach(f => { if (d[f] != null) $(f).checked = d[f]; });
+  if (d.state && TEMPLATES[d.state.tpl]) state = { ...state, ...d.state, colors: { ...TEMPLATES[d.state.tpl], ...d.state.colors } };
+}
+function save() { localStorage.setItem(STORE, JSON.stringify(collect())); }
+function load() {
+  try {
+    if (OVERLAY) {
+      const bin = atob(decodeURIComponent(location.hash.slice('#overlay='.length)));
+      apply(JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, ch => ch.charCodeAt(0)))));
+      $('transparent').checked = true;
+      document.body.classList.add('overlay');
+    } else {
+      apply(JSON.parse(localStorage.getItem(STORE)));
+    }
+  } catch {}
+}
+
+// init
+load();
+syncColorInputs();
+if (!OVERLAY) buildTemplates();
+setupSegs();
+document.querySelectorAll('aside input, aside textarea, aside select, #scale').forEach(el => {
+  if (el.type === 'color') {
+    el.addEventListener('input', () => { state.colors[el.id.slice(2)] = el.value; update(); });
+  } else el.addEventListener('input', () => {
+    update();
+    if (ANIM_IDS.includes(el.id)) replay();
+  });
+});
+$('enter').addEventListener('click', () => replay());
+$('btnReplay').onclick = replay;
+$('btnWebm').onclick = () => recordWebm();
+$('btnObs').onclick = async () => {
+  const url = obsLink();
+  try { await navigator.clipboard.writeText(url); toast('已複製！在 OBS 新增「瀏覽器」來源並貼上網址'); }
+  catch { prompt('複製這個網址，貼到 OBS 瀏覽器來源：', url); }
+};
+document.querySelectorAll('.bgpick button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.bgpick button').forEach(x => x.classList.toggle('on', x === b));
+  $('stage').className = 'stage ' + b.dataset.bg;
+});
+$('btnDownload').onclick = () => { download(exportCanvas(), fileName()); toast('已下載 PNG'); };
+$('btnQrOnly').onclick = () => {
+  const cv = exportCanvas(true);
+  if (!cv) return toast('請先輸入 QR 內容');
+  download(cv, 'qrcode.png'); toast('已下載 QR Code');
+};
+$('btnCopy').onclick = async () => {
+  try {
+    const blob = await new Promise(r => exportCanvas().toBlob(r, 'image/png'));
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    toast('已複製到剪貼簿');
+  } catch { toast('此瀏覽器不支援複製圖片，請改用下載'); }
+};
+document.fonts.ready.then(() => { if (!OVERLAY) buildTemplates(); update(); replay(); });
+update();
+</script>
+</body>
+</html>
